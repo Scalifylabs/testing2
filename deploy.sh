@@ -1,35 +1,63 @@
-#!/bin/bash
+#!/bin/sh
+set -e
 
-# 1. Detectar la ruta actual automáticamente
-# Esto hace que el script funcione sin importar el dominio
 TARGET_DIR=$(pwd)
-echo "Ejecutando limpieza en: $TARGET_DIR"
 
-# 2. Verificar que estamos en un entorno Next.js builded
-if [ ! -d ".next/standalone" ]; then
-    echo "Error: .next/standalone no encontrado. Abortando limpieza."
-    exit 1
+echo "[deploy.sh] Iniciando en: $TARGET_DIR"
+
+# ── 1. Mover standalone a la raíz ─────────────────────────────────────────────
+if [ -d "$TARGET_DIR/.next/standalone" ]; then
+  echo "[deploy.sh] Moviendo standalone..."
+  cp -r "$TARGET_DIR/.next/standalone/." "$TARGET_DIR/"
+else
+  echo "[deploy.sh] WARN: .next/standalone no encontrado. ¿El build fue standalone?"
 fi
 
-# 3. Mover archivos del standalone a la raíz
-# Usamos '.' para referenciar el directorio actual
-cp -rv .next/standalone/. ./
-cp -rv .next/static/. .next/standalone/.next/static/
+# ── 2. Asegurar assets estáticos en su lugar correcto ─────────────────────────
+mkdir -p "$TARGET_DIR/.next/static"
+if [ -d "$TARGET_DIR/.next/static" ]; then
+  echo "[deploy.sh] Assets estáticos en su lugar."
+fi
 
-# 4. Limpieza Atómica (Mantiene solo el Runtime)
-# Borra todo excepto lo estrictamente necesario para que node server.js funcione
-find . -maxdepth 1 ! -name '.' ! -name '..' \
-    ! -name 'node_modules' \
-    ! -name '.next' \
-    ! -name 'public' \
-    ! -name 'server.js' \
-    ! -name 'package.json' \
-    ! -name 'deploy.sh' \
-    ! -name 'tmp' \
-    -exec rm -rf {} +
+# ── 3. Limpieza agresiva de archivos fuente ───────────────────────────────────
+echo "[deploy.sh] Limpiando archivos fuente..."
+rm -rf \
+  "$TARGET_DIR/src" \
+  "$TARGET_DIR/app" \
+  "$TARGET_DIR/pages" \
+  "$TARGET_DIR/components" \
+  "$TARGET_DIR/lib" \
+  "$TARGET_DIR/styles" \
+  "$TARGET_DIR/hooks" \
+  "$TARGET_DIR/utils" \
+  "$TARGET_DIR/types" \
+  "$TARGET_DIR/prisma" \
+  "$TARGET_DIR/.github" \
+  "$TARGET_DIR/tsconfig.json" \
+  "$TARGET_DIR/tsconfig.*.json" \
+  "$TARGET_DIR/tailwind.config.js" \
+  "$TARGET_DIR/tailwind.config.ts" \
+  "$TARGET_DIR/postcss.config.js" \
+  "$TARGET_DIR/postcss.config.mjs" \
+  "$TARGET_DIR/next.config.js" \
+  "$TARGET_DIR/next.config.ts" \
+  "$TARGET_DIR/next.config.mjs" \
+  "$TARGET_DIR/.eslintrc*" \
+  "$TARGET_DIR/.prettierrc*" \
+  "$TARGET_DIR/jest.config*" \
+  "$TARGET_DIR/vitest.config*" \
+  "$TARGET_DIR/README.md" \
+  "$TARGET_DIR/CHANGELOG.md"
 
-# 5. Reinicio de Passenger (Plesk)
-mkdir -p tmp
-touch tmp/restart.txt
+# ── 4. Crear app.js para Phusion Passenger si no existe ──────────────────────
+if [ ! -f "$TARGET_DIR/app.js" ]; then
+  echo "[deploy.sh] Creando app.js para Passenger..."
+  printf "require('./server.js');\n" > "$TARGET_DIR/app.js"
+fi
 
-echo "Despliegue universal completado con éxito."
+# ── 5. Reiniciar Passenger ────────────────────────────────────────────────────
+echo "[deploy.sh] Reiniciando Passenger..."
+mkdir -p "$TARGET_DIR/tmp"
+touch "$TARGET_DIR/tmp/restart.txt"
+
+echo "[deploy.sh] ✅ Despliegue completado."
